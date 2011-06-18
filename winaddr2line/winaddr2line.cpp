@@ -32,8 +32,18 @@
 #define OPT_SYMBOL_PATH		TEXT("-y")
 #define OPT_SYMBOL_PATH_L	TEXT("--symbol-path")
 
+struct address_node
+{
+	TCHAR *address;
+	address_node *next;
+
+	address_node(TCHAR* addr): address(addr), next(NULL)
+	{}
+};
+
 struct option 
 {
+	struct address_node *addr_list;
 	BOOL addresses; 
 	BOOL pretty_print;
 	BOOL basename;
@@ -43,14 +53,16 @@ struct option
 	BOOL version;
 	PTSTR exe;
 	PTSTR symbol_path;
-	DWORD64 func_addr;
+	int addr_count;
+	int argc;
+	TCHAR** argv;
 
-	option() : addresses(FALSE), pretty_print(FALSE),
+	option(int ac, TCHAR* av[]) : addresses(FALSE), pretty_print(FALSE),
 		basename(FALSE), functions(FALSE), demangle(FALSE),
-		help(FALSE), version(FALSE), func_addr(0),
-		exe(TEXT("a.exe")), symbol_path(NULL)
-	{
-	}
+		help(FALSE), version(FALSE), addr_list(NULL),
+		exe(TEXT("a.exe")), symbol_path(NULL), addr_count(0),
+		argc(ac), argv(av)
+	{}
 };
 
 struct symbol_info
@@ -86,29 +98,32 @@ void print_version()
 void print_help()
 {
 	printf("%s\r\n", "Usage: winaddr2line [option(s)] [addr(s)]\n"
- " Convert addresses into line number/file name pairs.\n"
- " If no addresses are specified on the command line, they will be read from stdin\n"
- " The options are:\n"
-  "  -a --addresses         Show addresses\n"
-  "  -e --exe=<executable>  Set the input file name (default is a.exe)\n"
-  "  -p --pretty-print      Make the output easier to read for humans\n"
-  "  -s --basenames         Strip directory names\n"
-  "  -f --functions         Show function names\n"
-  "  -C --demangle[=style]  Demangle function names\n"
-  "  -y --symbol-path=<direcoty_to_symbol>    (option specific to winaddr2line)\n"
-  "                         Set the directory to search for symbol file (.pdb)\n"
-  "  -h --help              Display this information\n"
-  "  -v --version           Display the program's version\n");
+		" Convert addresses into line number/file name pairs.\n"
+		" If no addresses are specified on the command line, they will be read from stdin\n"
+		" The options are:\n"
+		"  -a --addresses         Show addresses\n"
+		"  -e --exe=<executable>  Set the input file name (default is a.exe)\n"
+		"  -p --pretty-print      Make the output easier to read for humans\n"
+		"  -s --basenames         Strip directory names\n"
+		"  -f --functions         Show function names\n"
+		"  -C --demangle[=style]  Demangle function names\n"
+		"  -y --symbol-path=<direcoty_to_symbol>    (option specific to winaddr2line)\n"
+		"                         Set the directory to search for symbol file (.pdb)\n"
+		"  -h --help              Display this information\n"
+		"  -v --version           Display the program's version\n");
 }
 
-int parse_option(int argc, TCHAR* argv[], option& opt)
+int parse_option(option& opt)
 {
+	int argc = opt.argc;
+	TCHAR** argv = opt.argv;
+	address_node *node = NULL, *prev = NULL;
 	if(argc < 2)
 	{
 		print_help();
 		return 1;
 	}
-	for(int i = 0; i < argc; ++i)
+	for(int i = 1; i < argc; ++i)
 	{
 		if(0 == _tcsncmp(OPT_ADDRESSES, argv[i], _tcslen(OPT_ADDRESSES))
 			|| 0 == _tcsncmp(OPT_ADDRESSES_L, argv[i], _tcslen(OPT_ADDRESSES_L)))
@@ -179,25 +194,49 @@ int parse_option(int argc, TCHAR* argv[], option& opt)
 			continue;
 		}
 		// if argv isn't a known argument, it's assumed to be address in hex format
-		opt.func_addr = _tcstoul(argv[i], NULL, 16);
+		++opt.addr_count; // count the number of addresses supplied in argument
+		node = new address_node(argv[i]);
+		
+		if(NULL == opt.addr_list)
+		{
+			opt.addr_list = node;
+			prev = opt.addr_list;
+		}
+		else
+		{
+			prev->next = node;
+			prev = node;
+		}
 	}
 	return 0;
 }
 
-void print(option &opt, symbol_info &sym)
+void print(DWORD64 addr, option &opt, symbol_info &sym)
 {
 	if(!sym.success)
 	{
-		if(opt.functions)
-			_tprintf(TEXT("??\r\n"), opt.func_addr);
-		_tprintf(TEXT("??:0\r\n"));
-
+		if(opt.pretty_print)
+		{
+			if(opt.addresses)
+				_tprintf(TEXT("0x%08x: "), addr);
+			if(opt.functions)
+				_tprintf(TEXT("??\n"), addr);
+			_tprintf(TEXT("??:0\n"));
+		}
+		else
+		{
+			if(opt.addresses)
+				_tprintf(TEXT("0x%08x\n"), addr);
+			if(opt.functions)
+				_tprintf(TEXT("??\n"), addr);
+			_tprintf(TEXT("??:0\n"));
+		}
 		return;
 	}
 	if(opt.pretty_print)
 	{
 		if(opt.addresses)
-			_tprintf(TEXT("0x%08x: "), opt.func_addr);
+			_tprintf(TEXT("0x%08x: "), addr);
 
 		if(opt.functions)
 		{
@@ -216,7 +255,7 @@ void print(option &opt, symbol_info &sym)
 	else
 	{
 		if(opt.addresses)
-			_tprintf(TEXT("0x%08x\r\n"), opt.func_addr);
+			_tprintf(TEXT("0x%08x\r\n"), addr);
 
 		if(opt.functions)
 		{
@@ -232,6 +271,29 @@ void print(option &opt, symbol_info &sym)
 		else
 			_tprintf(TEXT("%s:%d\r\n"), sym.line->FileName, sym.line->LineNumber);
 	} // if(opt.pretty_print) 
+}
+
+DWORD64 get_next_address(const option &opt, int index)
+{	
+	int i = 0;
+	DWORD64 addr = 0;
+	if(opt.addr_count > 0)
+	{
+		address_node *node = opt.addr_list;
+		while(i++ < index)
+		{
+			node = node->next;
+		}
+		return _tcstoul(node->address, NULL, 16);
+	}
+	else
+	{
+		TCHAR buf[256];
+		if(_fgetts(buf, 256, stdin))
+			return _tcstoul(buf, NULL, 16);
+		else
+			return -1;
+	}
 }
 
 int addr2line(option &opt)
@@ -256,39 +318,36 @@ int addr2line(option &opt)
 	DWORD64 base_addr = 0;
 	DWORD64 load_addr = 0;
 
-	load_addr = SymLoadModuleEx(proc,    // target process 
-		NULL,        // handle to image - not used
-		opt.exe,	 // name of image file
-		NULL,        // name of module - not required
-		base_addr,  // base address - not required
-		0,           // size of image - not required
-		NULL,        // MODLOAD_DATA used for special cases 
-		0);          // flags - not required
+	load_addr = SymLoadModuleEx(proc, NULL, opt.exe, NULL, base_addr, 
+		0, NULL, 0);
 	if(0 == load_addr)
 	{
 		return GetLastError();
 	}
 
-	if(opt.func_addr != 0)
+	int i = 0;
+	DWORD64 func_addr = get_next_address(opt, i);
+	while(func_addr != -1)
 	{ // if function address isn't given as argument, read from stdio
 		result.success = TRUE;
 
 		if(opt.functions)
 		{
 			DWORD64  displacement = 0;
-			if (0 == SymFromAddr(proc, opt.func_addr, &displacement, result.symbol))
+			if (0 == SymFromAddr(proc, func_addr, &displacement, result.symbol))
 			{
 				result.success = FALSE;
 			}
 		}
 
 		DWORD displacement;
-		if (0 == SymGetLineFromAddr64(proc, opt.func_addr, &displacement, result.line))
+		if (0 == SymGetLineFromAddr64(proc, func_addr, &displacement, result.line))
 		{
 			result.success = FALSE;
 		}
 
-		print(opt, result);
+		print(func_addr, opt, result);
+		func_addr = get_next_address(opt, ++i);
 	}
 	SymUnloadModule64(proc, load_addr);
 	SymCleanup(proc);
@@ -297,8 +356,8 @@ int addr2line(option &opt)
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-	option opt;
-	if(0 == parse_option(argc, argv, opt))
+	option opt(argc, argv);
+	if(0 == parse_option(opt))
 		return addr2line(opt);
 	return 0;
 }
