@@ -1,8 +1,6 @@
 // winaddr2line.cpp : Defines the entry point for the console application.
 //
 
-//#undef UNICODE
-//#undef _UNICODE
 #ifdef UNICODE
 #define DBGHELP_TRANSLATE_TCHAR
 #endif
@@ -63,6 +61,17 @@ struct option
 		exe(TEXT("a.exe")), symbol_path(NULL), addr_count(0),
 		argc(ac), argv(av)
 	{}
+
+	~option()
+	{
+		address_node *node;
+		while(NULL != addr_list)
+		{
+			node = addr_list;
+			addr_list = node->next;
+			delete node;
+		}
+	}
 };
 
 struct symbol_info
@@ -276,7 +285,6 @@ void print(DWORD64 addr, option &opt, symbol_info &sym)
 DWORD64 get_next_address(const option &opt, int index)
 {	
 	int i = 0;
-	DWORD64 addr = 0;
 	if(opt.addr_count > 0)
 	{
 		address_node *node = opt.addr_list;
@@ -284,7 +292,10 @@ DWORD64 get_next_address(const option &opt, int index)
 		{
 			node = node->next;
 		}
-		return _tcstoul(node->address, NULL, 16);
+		if(NULL != node)
+			return _tcstoul(node->address, NULL, 16);
+		else
+			return (DWORD64)-1;
 	}
 	else
 	{
@@ -292,7 +303,7 @@ DWORD64 get_next_address(const option &opt, int index)
 		if(_fgetts(buf, 256, stdin))
 			return _tcstoul(buf, NULL, 16);
 		else
-			return -1;
+			return (DWORD64)-1;
 	}
 }
 
