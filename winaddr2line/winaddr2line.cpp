@@ -307,6 +307,25 @@ DWORD64 get_next_address(const option &opt, int index)
 	}
 }
 
+int get_file_attr(const TCHAR* exe, DWORD64 &base, DWORD &file_size)
+{
+	HANDLE f = CreateFile(exe, GENERIC_READ, FILE_SHARE_READ, 
+		NULL, OPEN_EXISTING, 0, NULL ); 
+
+	if(f == INVALID_HANDLE_VALUE) 
+	{
+		_ftprintf(stderr, TEXT("'%s': No such file\n"), exe);
+		return 0;
+	}
+
+	TCHAR ext[_MAX_EXT] = {0};
+	_tsplitpath_s(exe, NULL, 0, NULL, 0, NULL, 0, ext, _MAX_EXT);
+	if(_tcsicmp(TEXT(".pdb"), ext) == 0)
+		base = 0x10000000; // base address can't be null if exe is a .pdb symbol file
+	file_size = GetFileSize(f, NULL);
+	return 1;
+}
+
 int addr2line(option &opt)
 {
 	HANDLE proc;
@@ -326,11 +345,13 @@ int addr2line(option &opt)
 		return GetLastError();
 	}
 
-	DWORD64 base_addr = 0;
-	DWORD64 load_addr = 0;
+	DWORD64 base_addr = 0, load_addr = 0;
+	DWORD file_size = 0;
 
+	if(!get_file_attr(opt.exe, base_addr, file_size))
+		return 1;
 	load_addr = SymLoadModuleEx(proc, NULL, opt.exe, NULL, base_addr, 
-		0, NULL, 0);
+		file_size, NULL, 0);
 	if(0 == load_addr)
 	{
 		return GetLastError();
