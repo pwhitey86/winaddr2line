@@ -284,7 +284,7 @@ static BOOL CALLBACK on_enum_symbol(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVO
 	if(opt->print_file_name)
 		_tprintf(TEXT("%s:"), uc->module);
 
-	_tprintf(TEXT("%08llx %d %c %s"), pSymInfo->Address, pSymInfo->Tag,
+	_tprintf(TEXT("%08llx %c %s"), pSymInfo->Address, //pSymInfo->Tag,
 		get_symbol_type(pSymInfo), pSymInfo->Name);
 
 	PIMAGEHLP_LINE64 line = new IMAGEHLP_LINE64();
