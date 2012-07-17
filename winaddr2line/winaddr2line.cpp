@@ -9,7 +9,7 @@
 #include <windows.h>
 #include "dbghelp.h"
 
-#define	VERSION				TEXT("1.0.0")
+#define	VERSION				TEXT("1.0.1")
 
 #define OPT_ADDRESSES		TEXT("-a")
 #define OPT_ADDRESSES_L		TEXT("--address")
@@ -111,7 +111,7 @@ void print_help()
 		" If no addresses are specified on the command line, they will be read from stdin\n"
 		" The options are:\n"
 		"  -a --addresses         Show addresses\n"
-		"  -e --exe=<executable>  Set the input file name (default is a.exe)\n"
+		"  -e --exe <executable>  Set the input file name (default is a.exe)\n"
 		"  -p --pretty-print      Make the output easier to read for humans\n"
 		"  -s --basenames         Strip directory names\n"
 		"  -f --functions         Show function names\n"
