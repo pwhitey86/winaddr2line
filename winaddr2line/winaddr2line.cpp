@@ -342,7 +342,9 @@ int addr2line(option &opt)
 
 	if (!SymInitialize(proc, opt.symbol_path, FALSE))
 	{
-		return GetLastError();
+		int errorno = GetLastError();
+		_ftprintf(stderr, TEXT("SymInitialize failed, error code: %d\n"), errorno);
+		return errorno;
 	}
 
 	DWORD64 base_addr = 0, load_addr = 0;
@@ -354,7 +356,9 @@ int addr2line(option &opt)
 		file_size, NULL, 0);
 	if(0 == load_addr)
 	{
-		return GetLastError();
+		int errorno = GetLastError();
+		_ftprintf(stderr, TEXT("SymLoadModuleEx failed, error code: %d\n"), errorno);
+		return errorno;
 	}
 
 	int i = 0;
@@ -368,6 +372,8 @@ int addr2line(option &opt)
 			DWORD64  displacement = 0;
 			if (0 == SymFromAddr(proc, func_addr, &displacement, result.symbol))
 			{
+				int errorno = GetLastError();
+				_ftprintf(stderr, TEXT("SymFromAddr failed, error code: %d\n"), errorno);
 				result.success = FALSE;
 			}
 		}
@@ -375,6 +381,8 @@ int addr2line(option &opt)
 		DWORD displacement;
 		if (0 == SymGetLineFromAddr64(proc, func_addr, &displacement, result.line))
 		{
+			int errorno = GetLastError();
+			_ftprintf(stderr, TEXT("SymGetLineFromAddr64 failed, error code: %d\n"), errorno);
 			result.success = FALSE;
 		}
 
